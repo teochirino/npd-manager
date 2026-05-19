@@ -12,22 +12,18 @@ class AuthController extends Controller
 {
     public function login(Request $request)
     {
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
-        ]);
+        $email = trim($request->input('email', ''));
+        $password = $request->input('password', '');
 
-        $user = User::where('email', $request->email)->first();
+        $user = User::where('email', $email)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (!$user || !Hash::check($password, $user->password)) {
             throw ValidationException::withMessages([
                 'email' => ['Credenciales incorrectas.'],
             ]);
         }
 
-        // Eliminar tokens anteriores (opcional)
         $user->tokens()->delete();
-
         $token = $user->createToken('auth-token')->plainTextToken;
 
         return response()->json([

@@ -164,19 +164,65 @@
 
         <!-- Vista Mis Proyectos (para ingenieros) -->
         <div v-else-if="currentView === 'mis-proyectos'" class="view-container">
-            <div class="view-header">
-                <h1 class="view-title">Mis proyectos</h1>
-                <p class="view-subtitle">Proyectos asignados a {{ user?.name }}</p>
+            <!-- KPIs Strip -->
+            <div class="kpi-strip">
+                <div class="kpi-card-strip blue" @click="myProjectsFilter = 'curso'" style="cursor: pointer;">
+                    <div class="kpi-label">En curso</div>
+                    <div class="kpi-value-strip">{{ myProjectsStats.active }}</div>
+                    <div class="kpi-hint">proyectos activos</div>
+                </div>
+                <div class="kpi-card-strip ok">
+                    <div class="kpi-label">Terminados</div>
+                    <div class="kpi-value-strip">{{ myProjectsStats.completed }}</div>
+                    <div class="kpi-hint">completados</div>
+                </div>
+                <div :class="['kpi-card-strip', myProjectsStats.atRisk > 0 ? 'bad' : 'ok']" @click="myProjectsFilter = 'riesgo'" style="cursor: pointer;">
+                    <div class="kpi-label">En riesgo</div>
+                    <div class="kpi-value-strip">{{ myProjectsStats.atRisk }}</div>
+                    <div class="kpi-hint">entrega ≤ 7 días</div>
+                </div>
+                <div class="kpi-card-strip blue">
+                    <div class="kpi-label">Avance promedio</div>
+                    <div class="kpi-value-strip">{{ myProjectsStats.avgProgress }}%</div>
+                    <div class="kpi-hint">de todos mis proyectos</div>
+                </div>
+            </div>
+
+            <!-- Filtro Tabs -->
+            <div class="filter-tabs-container">
+                <div class="filter-tabs">
+                    <button 
+                        @click="myProjectsFilter = 'curso'"
+                        :class="['filter-tab', myProjectsFilter === 'curso' ? 'active purple' : '']"
+                    >
+                        En curso ({{ myProjectsStats.active }})
+                    </button>
+                    <button 
+                        @click="myProjectsFilter = 'riesgo'"
+                        :class="['filter-tab', myProjectsFilter === 'riesgo' ? 'active bad' : '']"
+                    >
+                        En riesgo ({{ myProjectsStats.atRisk }})
+                    </button>
+                    <button 
+                        @click="myProjectsFilter = 'todos'"
+                        :class="['filter-tab', myProjectsFilter === 'todos' ? 'active navy' : '']"
+                    >
+                        Todos ({{ myProjects.filter(p => p.status !== 'Cancelado').length }})
+                    </button>
+                </div>
+                <button class="btn-new-project" @click="openNewProjectModal">
+                    ＋ Nuevo proyecto
+                </button>
             </div>
 
             <div v-if="loading" class="loading-state">Cargando proyectos...</div>
-            <div v-else-if="myProjects.length === 0" class="empty-state">
+            <div v-else-if="filteredMyProjects.length === 0" class="empty-state">
                 <div class="empty-icon">📁</div>
-                <p>No tienes proyectos asignados</p>
+                <p>No hay proyectos en esta categoría</p>
             </div>
             <div v-else class="projects-grid">
                 <ProjectCard 
-                    v-for="project in myProjects" 
+                    v-for="project in filteredMyProjects" 
                     :key="project.id" 
                     :project="project"
                     @click="viewProject(project)"
@@ -240,14 +286,15 @@ const engineers = ref([])
 const loading = ref(false)
 const currentView = ref('inicio')
 const showProjectModal = ref(false)
+const selectedProject = ref(null)
+const myProjectsFilter = ref('curso')
+
 const filters = ref({
     search: '',
     engineer: '',
     status: '',
     phase: ''
 })
-
-const selectedProject = ref(null)
 
 const stats = computed(() => {
     if (!projects.value || projects.value.length === 0) {
@@ -302,6 +349,45 @@ const recentProjects = computed(() => {
 const myProjects = computed(() => {
     if (!user.value) return []
     return projects.value.filter(p => p.engineer_id === user.value.id)
+})
+
+const myProjectsStats = computed(() => {
+    if (!user.value || myProjects.value.length === 0) {
+        return {
+            active: 0,
+            completed: 0,
+            atRisk: 0,
+            avgProgress: 0
+        }
+    }
+    
+    const active = myProjects.value.filter(p => p.status !== 'Terminado' && p.status !== 'Cancelado')
+    const completed = myProjects.value.filter(p => p.status === 'Terminado')
+    const atRisk = active.filter(p => isProjectAtRisk(p))
+    const avgProgress = myProjects.value.length > 0
+        ? Math.round(myProjects.value.reduce((sum, p) => sum + (p.progress || 0), 0) / myProjects.value.length)
+        : 0
+    
+    return {
+        active: active.length,
+        completed: completed.length,
+        atRisk: atRisk.length,
+        avgProgress
+    }
+})
+
+const filteredMyProjects = computed(() => {
+    if (!myProjects.value.length) return []
+    
+    const active = myProjects.value.filter(p => p.status !== 'Terminado' && p.status !== 'Cancelado')
+    const atRisk = active.filter(p => isProjectAtRisk(p))
+    const all = myProjects.value.filter(p => p.status !== 'Cancelado')
+    
+    if (myProjectsFilter.value === 'curso') return active
+    if (myProjectsFilter.value === 'riesgo') return atRisk
+    if (myProjectsFilter.value === 'todos') return all
+    
+    return active
 })
 
 const filteredProjects = computed(() => {
@@ -377,6 +463,11 @@ const viewProject = (project) => {
     showProjectModal.value = true
 }
 
+const openNewProjectModal = () => {
+    selectedProject.value = null
+    showProjectModal.value = true
+}
+
 const openCreateModal = () => {
     selectedProject.value = null
     showProjectModal.value = true
@@ -384,6 +475,7 @@ const openCreateModal = () => {
 
 const handleProjectSaved = () => {
     loadProjects()
+    showProjectModal.value = false
 }
 
 const loadEngineers = async () => {
@@ -499,6 +591,20 @@ onMounted(() => {
     const userData = localStorage.getItem('user')
     if (userData) {
         user.value = JSON.parse(userData)
+        
+        // Determinar vista inicial según perfil del usuario
+        const perfil = user.value?.perfil
+        if (perfil && perfil !== 'GI') {
+            // Ingenieros de Producto (RB, FR, AE, PR, RE)
+            if (['RB', 'FR', 'AE', 'PR', 'RE'].includes(perfil)) {
+                currentView.value = 'mis-proyectos'
+            }
+            // Áreas de soporte (CAL, COS, PRO)
+            else if (['CAL', 'COS', 'PRO'].includes(perfil)) {
+                currentView.value = 'mis-tareas-area'
+            }
+        }
+        // Gerente (GI) mantiene vista 'inicio' por defecto
     }
     loadProjects()
     loadEngineers()
@@ -1113,5 +1219,168 @@ watch(currentView, () => {
 .row-arrow {
     font-size: 16px;
     color: #9ca3af;
+}
+
+/* KPI Strip - Diseño de referencia */
+.kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 24px;
+}
+
+.kpi-card-strip {
+    background: white;
+    border: 1px solid #e4e8ee;
+    border-radius: 14px;
+    padding: 14px 15px;
+    position: relative;
+    overflow: hidden;
+    transition: box-shadow 0.15s;
+}
+
+.kpi-card-strip:hover {
+    box-shadow: 0 2px 12px rgba(26, 34, 51, 0.08);
+}
+
+.kpi-card-strip::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    opacity: 0;
+}
+
+.kpi-card-strip.ok {
+    border-color: rgba(30, 158, 94, 0.3);
+}
+
+.kpi-card-strip.ok::before {
+    background: rgba(30, 158, 94, 0.10);
+    opacity: 1;
+}
+
+.kpi-card-strip.bad {
+    border-color: rgba(217, 53, 53, 0.3);
+}
+
+.kpi-card-strip.bad::before {
+    background: rgba(217, 53, 53, 0.10);
+    opacity: 1;
+}
+
+.kpi-card-strip.blue {
+    border-color: rgba(26, 31, 60, 0.2);
+}
+
+.kpi-card-strip.blue::before {
+    background: rgba(26, 31, 60, 0.05);
+    opacity: 1;
+}
+
+.kpi-label {
+    font-size: 10px;
+    color: #4a5568;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    position: relative;
+}
+
+.kpi-value-strip {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    margin: 4px 0 2px;
+    position: relative;
+    line-height: 1;
+}
+
+.kpi-card-strip.ok .kpi-value-strip {
+    color: #1e9e5e;
+}
+
+.kpi-card-strip.bad .kpi-value-strip {
+    color: #d93535;
+}
+
+.kpi-card-strip.blue .kpi-value-strip {
+    color: #1a1f3c;
+}
+
+.kpi-hint {
+    font-size: 11px;
+    color: #4a5568;
+    position: relative;
+}
+
+/* Filter Tabs */
+.filter-tabs-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.filter-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.filter-tab {
+    padding: 6px 16px;
+    border-radius: 99px;
+    border: 2px solid #d8dde5;
+    background: white;
+    color: #1a2233;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+}
+
+.filter-tab:hover {
+    border-color: #534AB7;
+}
+
+.filter-tab.active {
+    color: white;
+}
+
+.filter-tab.active.purple {
+    background: #534AB7;
+    border-color: #534AB7;
+}
+
+.filter-tab.active.bad {
+    background: #d93535;
+    border-color: #d93535;
+}
+
+.filter-tab.active.navy {
+    background: #1a1f3c;
+    border-color: #1a1f3c;
+}
+
+.btn-new-project {
+    padding: 7px 16px;
+    background: #1a1f3c;
+    color: white;
+    border: none;
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+
+.btn-new-project:hover {
+    background: #2d3561;
 }
 </style>

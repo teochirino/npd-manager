@@ -16,6 +16,25 @@ Route::get('/health', function () {
 // Autenticación
 Route::post('/login', [AuthController::class, 'login']);
 
+// Endpoint de prueba para verificar credenciales
+Route::post('/test-login', function(\Illuminate\Http\Request $request) {
+    $user = \App\Models\User::where('email', $request->email)->first();
+    
+    if (!$user) {
+        return response()->json(['error' => 'Usuario no encontrado', 'email' => $request->email], 404);
+    }
+    
+    $passwordCheck = \Illuminate\Support\Facades\Hash::check($request->password, $user->password);
+    
+    return response()->json([
+        'user_found' => true,
+        'email' => $user->email,
+        'name' => $user->name,
+        'password_correct' => $passwordCheck,
+        'password_hash_preview' => substr($user->password, 0, 30) . '...',
+    ]);
+});
+
 // Rutas protegidas (requieren token)
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
