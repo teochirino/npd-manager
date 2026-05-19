@@ -2,7 +2,7 @@
     <div class="users-container">
         <div class="users-header">
             <div>
-                <h1 class="users-title">Gestión de usuarios</h1>
+                <h1 class="users-title">Gestión de usuarios.</h1>
                 <p class="users-subtitle">Administrar accesos y perfiles</p>
             </div>
             <button @click="openCreateModal" class="btn-new-user">+ Nuevo usuario</button>
