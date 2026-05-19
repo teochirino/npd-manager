@@ -56,7 +56,7 @@ with:
 server: ${{ secrets.FTP_SERVER }}
 username: ${{ secrets.FTP_USERNAME }}
 password: ${{ secrets.FTP_PASSWORD }}
-server-dir: control.lineaitalia.net/
+server-dir: npd.lineaitalia.net/
 exclude: |
 node_modules
 .git
